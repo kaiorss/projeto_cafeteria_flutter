@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../models/transferencia.dart';
-import 'formulario.dart';
 import 'package:intl/intl.dart';
+
+import '../../components/status_sincronizacao.dart';
+import '../../models/transferencia.dart';
+import '../../repository/transferencia_repository.dart';
+import 'formulario.dart';
 
 /// Formatação brasileira de moeda: R$ 12,00
 final NumberFormat _formatoMoeda = NumberFormat.currency(
@@ -11,35 +14,17 @@ final NumberFormat _formatoMoeda = NumberFormat.currency(
 
 /// Tela principal da cafeteria.
 ///
-/// A lista de consumos vive apenas em memória, carregada com registros
-/// iniciais e ampliada a cada novo cadastro retornado pelo formulário.
+/// Carrega os consumos persistidos no SQLite e atualiza a listagem após
+/// cada novo cadastro realizado pelo formulário.
 class ListaTransferencias extends StatefulWidget {
-  final List<Transferencia> _transferencias = _registrosIniciais();
+  const ListaTransferencias({super.key, required this.repository});
 
-  ListaTransferencias({super.key});
+  final TransferenciaRepository repository;
 
   @override
-  State<StatefulWidget> createState() {
+  State<ListaTransferencias> createState() {
     return ListaTransferenciaState();
   }
-}
-
-List<Transferencia> _registrosIniciais() {
-  return <Transferencia>[
-    Transferencia(nome: 'Café Expresso', valor: 12.00, id: 1),
-    Transferencia(
-      nome: 'Cappuccino',
-      valor: 8.50,
-      id: 2,
-      icone: Icons.coffee,
-    ),
-    Transferencia(
-      nome: 'Pão de Queijo',
-      valor: 4.00,
-      id: 3,
-      icone: Icons.bakery_dining,
-    ),
-  ];
 }
 
 class ListaTransferenciaState extends State<ListaTransferencias> {
@@ -47,27 +32,132 @@ class ListaTransferenciaState extends State<ListaTransferencias> {
   static const _mensagemListaVazia = 'Nenhum consumo cadastrado.';
   static const _rotuloId = 'Identificador';
 
-  /// Aguarda cerca de 1 segundo antes de inserir o item na lista,
-  /// demonstrando a atualização dinâmica com Future.delayed + setState.
-  Future<void> _atualiza(Transferencia? transferenciaRecebida) async {
-    if (transferenciaRecebida != null) {
-      await Future.delayed(const Duration(seconds: 1));
-      setState(() {
-        widget._transferencias.add(transferenciaRecebida);
-      });
-    }
+  List<Transferencia> _transferencias = <Transferencia>[];
+  bool _carregando = true;
+  bool _sincronizando = false;
+  int _pendentes = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregar();
   }
 
-  void _abreFormulario() {
-    debugPrint("Botão de novo consumo pressionado");
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) {
-          return const FormularioTransferencia();
-        },
+  Future<void> _carregar() async {
+    final List<Transferencia> itens = await widget.repository.listar();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _transferencias = itens;
+      _pendentes = itens.where((item) => !item.sincronizado).length;
+      _carregando = false;
+    });
+  }
+
+  Future<void> _abreFormulario() async {
+    debugPrint('Botão de novo consumo pressionado');
+
+    final Transferencia? transferenciaSalva =
+        await Navigator.push<Transferencia>(
+          context,
+          MaterialPageRoute<Transferencia>(
+            builder: (context) {
+              return FormularioTransferencia(repository: widget.repository);
+            },
+          ),
+        );
+
+    if (transferenciaSalva == null || !mounted) {
+      return;
+    }
+
+    await _carregar();
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          transferenciaSalva.sincronizado
+              ? 'Consumo salvo e sincronizado com o servidor.'
+              : 'Consumo salvo localmente. Aguardando sincronização.',
+        ),
       ),
-    ).then((transferenciaRecebida) => _atualiza(transferenciaRecebida));
+    );
+  }
+
+  Future<void> _sincronizar() async {
+    if (_sincronizando || _pendentes == 0) {
+      return;
+    }
+
+    setState(() {
+      _sincronizando = true;
+    });
+
+    ResultadoSincronizacao? resultado;
+    Object? erro;
+
+    try {
+      resultado = await widget.repository.sincronizarPendentes();
+    } catch (e) {
+      erro = e;
+      debugPrint('Erro ao sincronizar pendentes: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sincronizando = false;
+        });
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    await _carregar();
+    if (!mounted) {
+      return;
+    }
+
+    if (erro != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Não foi possível sincronizar. Os registros continuam pendentes.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    _mostrarResultado(resultado!);
+  }
+
+  void _mostrarResultado(ResultadoSincronizacao resultado) {
+    final String mensagem;
+
+    if (resultado.totalPendentes == 0) {
+      mensagem = 'Nenhum registro pendente.';
+    } else if (resultado.interrompidoPorConexao) {
+      mensagem =
+          'Sem conexão com a API. Sincronizados: '
+          '${resultado.sincronizados}. Pendentes: ${resultado.restantes}.';
+    } else if (resultado.tudoSincronizado) {
+      mensagem =
+          'Sincronização concluída. Sincronizados: '
+          '${resultado.sincronizados}. Pendentes: 0.';
+    } else {
+      mensagem =
+          'Sincronização parcial. Sincronizados: '
+          '${resultado.sincronizados}. Pendentes: ${resultado.restantes}.';
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(mensagem)));
   }
 
   @override
@@ -82,20 +172,35 @@ class ListaTransferenciaState extends State<ListaTransferencias> {
           ],
         ),
       ),
-      body: widget._transferencias.isEmpty
-          ? Center(
-              child: Text(
-                _mensagemListaVazia,
-                style: const TextStyle(fontSize: 18),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.only(top: 8, bottom: 96),
-              itemCount: widget._transferencias.length,
-              itemBuilder: (context, indice) {
-                final transferencia = widget._transferencias[indice];
-                return ItemTransferencia(transferencia);
-              },
+      body: _carregando
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: <Widget>[
+                _PainelSincronizacao(
+                  pendentes: _pendentes,
+                  sincronizando: _sincronizando,
+                  onSincronizar: _pendentes == 0 || _sincronizando
+                      ? null
+                      : _sincronizar,
+                ),
+                Expanded(
+                  child: _transferencias.isEmpty
+                      ? Center(
+                          child: Text(
+                            _mensagemListaVazia,
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.only(top: 8, bottom: 96),
+                          itemCount: _transferencias.length,
+                          itemBuilder: (context, indice) {
+                            final transferencia = _transferencias[indice];
+                            return ItemTransferencia(transferencia);
+                          },
+                        ),
+                ),
+              ],
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _abreFormulario,
@@ -103,6 +208,42 @@ class ListaTransferenciaState extends State<ListaTransferencias> {
         label: const Text('Novo consumo'),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+}
+
+class _PainelSincronizacao extends StatelessWidget {
+  const _PainelSincronizacao({
+    required this.pendentes,
+    required this.sincronizando,
+    required this.onSincronizar,
+  });
+
+  final int pendentes;
+  final bool sincronizando;
+  final VoidCallback? onSincronizar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: onSincronizar,
+          icon: sincronizando
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.cloud_upload_outlined),
+          label: Text('Sincronizar pendentes ($pendentes)'),
+        ),
+      ),
     );
   }
 }
@@ -131,13 +272,21 @@ class ItemTransferencia extends StatelessWidget {
         subtitle: Text(
           '${ListaTransferenciaState._rotuloId}: ${_transferencia.id}',
         ),
-        trailing: Text(
-          valorFormatado,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.brown,
-          ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: <Widget>[
+            Text(
+              valorFormatado,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.brown,
+              ),
+            ),
+            const SizedBox(height: 2),
+            StatusSincronizacao(sincronizado: _transferencia.sincronizado),
+          ],
         ),
       ),
     );

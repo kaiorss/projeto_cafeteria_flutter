@@ -1,16 +1,34 @@
 import 'package:flutter/material.dart';
-import 'screens/transferencias/lista.dart';
 import 'package:intl/intl.dart';
 
-void main() => runApp(CafeteriaApp());
+import 'database/app_database.dart';
+import 'database/transferencia_dao.dart';
+import 'repository/transferencia_repository.dart';
+import 'screens/transferencias/lista.dart';
+import 'services/transferencia_api_service.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  Intl.defaultLocale = 'pt_BR';
+
+  final AppDatabase appDatabase = AppDatabase();
+  await appDatabase.abrir();
+
+  final TransferenciaRepository repository = TransferenciaRepository(
+    dao: TransferenciaDao(appDatabase),
+    apiService: TransferenciaApiService(),
+  );
+
+  runApp(CafeteriaApp(repository: repository));
+}
 
 class CafeteriaApp extends StatelessWidget {
-  const CafeteriaApp({super.key});
+  const CafeteriaApp({super.key, required this.repository});
+
+  final TransferenciaRepository repository;
 
   @override
   Widget build(BuildContext context) {
-    Intl.defaultLocale = "pt_BR";
-
     // Paleta da cafeteria: tons de café, do creme ao marrom.
     const Color corCafe = Color(0xFF6F4E37);
     const Color corCreme = Color(0xFFD7CCC8);
@@ -24,9 +42,7 @@ class CafeteriaApp extends StatelessWidget {
 
         // Define uma paleta de cores a partir de uma cor base (café, nesse caso)
         // O Flutter gera automaticamente variações coerentes (primary, secondary, etc.)
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: corCafe,
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: corCafe),
 
         // Define a cor principal do aplicativo para widgets que ainda usam essa propriedade
         primaryColor: corCafe,
@@ -39,10 +55,7 @@ class CafeteriaApp extends StatelessWidget {
           backgroundColor: corCafe,
           foregroundColor: Colors.white,
           centerTitle: true,
-          titleTextStyle: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
+          titleTextStyle: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
 
         // Tema para botões elevados (substitui o antigo buttonTheme)
@@ -69,7 +82,7 @@ class CafeteriaApp extends StatelessWidget {
           border: OutlineInputBorder(), // Define borda padrão
         ),
       ),
-      home: ListaTransferencias(),
+      home: ListaTransferencias(repository: repository),
     );
   }
 }
