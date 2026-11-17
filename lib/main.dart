@@ -82,6 +82,12 @@ class CafeteriaApp extends StatelessWidget {
           border: OutlineInputBorder(), // Define borda padrão
         ),
       ),
+      builder: (context, child) {
+        return RepaintBoundary(
+          key: const Key('tela-cafeteria'),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: ListaTransferencias(repository: repository),
     );
   }
