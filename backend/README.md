@@ -208,6 +208,18 @@ O arquivo `render.yaml` na raiz do repositório declara o web service
 deve estar commitado e enviado ao GitHub antes do deploy. O `.env` não deve ser
 commitado.
 
+### Deploy atual da B6
+
+- API: `https://cafeteria-api-h3bm.onrender.com`
+- Health check: `https://cafeteria-api-h3bm.onrender.com/health`
+- Banco: Render Postgres Free, região `oregon`, criado em 15/11/2026 e com
+  expiração em 15/12/2026.
+- O deploy inicial foi criado pela Render CLI com as mesmas configurações do
+  `render.yaml`; o blueprint foi validado e permanece para recriação.
+- Validação em produção: health check OK, `POST` idempotente com mesmo `id` e
+  registro de teste removido ao final.
+- APK release gerado com `API_BASE_URL` apontando para a API pública.
+
 ### Blueprint pelo dashboard
 
 1. No Render Dashboard, escolha **New > Blueprint**.
@@ -232,10 +244,15 @@ TLS, acrescente `PGSSL=true`.
 
 ### Apontar o Flutter para produção
 
+O app já usa `https://cafeteria-api-h3bm.onrender.com` como padrão, portanto
+o `--dart-define` não é obrigatório:
+
 ```powershell
-flutter build apk --release `
-  --dart-define=API_BASE_URL=https://<servico>.onrender.com
+flutter build apk --release
 ```
+
+Ao sobrescrever a URL, não inclua `/api` no valor; o cliente já acrescenta
+esse prefixo.
 
 ### Limitações do plano gratuito
 

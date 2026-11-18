@@ -29,8 +29,9 @@ Avaliação prática de **Programação para Dispositivos Móveis II**.
 - **B4:** sincronização manual com contador de pendências.
 - **B5:** teste de integração local com SQLite + API real + PostgreSQL e
   geração das evidências.
-- **B6:** preparação do deploy no Render (`render.yaml`, `DATABASE_URL` e SSL);
-  publicação pendente de credenciais e envio ao GitHub.
+- **B6:** deploy do backend no Render em
+  `https://cafeteria-api-h3bm.onrender.com`; APK release gerado apontando para
+  essa URL.
 
 ## Estrutura
 
@@ -84,22 +85,31 @@ flutter pub get
 flutter run
 ```
 
-- Emulador Android: a URL padrão é `http://10.0.2.2:3000`.
-- Windows/navegador: a URL padrão é `http://localhost:3000`.
-- Aparelho físico ou outra porta:
+- A URL padrão do app é a API pública em produção:
+  `https://cafeteria-api-h3bm.onrender.com`.
+- Para desenvolvimento local, aponte explicitamente para o seu servidor:
 
 ```powershell
 flutter run --dart-define=API_BASE_URL=http://192.168.0.10:3000
 ```
 
-- Produção no Render:
+- O `--dart-define` é opcional para builds de produção:
 
 ```powershell
-flutter build apk --release `
-  --dart-define=API_BASE_URL=https://<servico>.onrender.com
+flutter build apk --release
 ```
 
+- Não inclua `/api` em `API_BASE_URL`; o cliente já acrescenta esse prefixo.
+
 O deploy do backend está documentado em `backend/README.md`.
+
+### Backend em produção
+
+- API: `https://cafeteria-api-h3bm.onrender.com`
+- Health check: `https://cafeteria-api-h3bm.onrender.com/health`
+- Banco: Render Postgres Free, região `oregon`, com expiração em 15/12/2026.
+- O serviço gratuito hiberna após 15 minutos sem tráfego; a primeira
+  requisição pode demorar cerca de um minuto.
 
 ## Testes
 
