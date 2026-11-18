@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:cafeteria/config/api_config.dart';
 import 'package:cafeteria/database/app_database.dart';
 import 'package:cafeteria/database/transferencia_dao.dart';
 import 'package:cafeteria/main.dart';
@@ -21,8 +22,6 @@ const String _pastaEvidencias = String.fromEnvironment(
   defaultValue: 'evidencias',
 );
 
-const String _apiBaseUrlDefinida = String.fromEnvironment('API_BASE_URL');
-
 bool _superficieConvertida = false;
 
 bool get _executandoEmDesktop {
@@ -30,15 +29,7 @@ bool get _executandoEmDesktop {
       (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 }
 
-String get _apiBaseUrl {
-  if (_apiBaseUrlDefinida.isNotEmpty) {
-    return _apiBaseUrlDefinida;
-  }
-  if (!kIsWeb && Platform.isAndroid) {
-    return 'http://10.0.2.2:3000';
-  }
-  return 'http://localhost:3000';
-}
+String get _apiBaseUrl => ApiConfig.baseUrl;
 
 void main() {
   final IntegrationTestWidgetsFlutterBinding binding =

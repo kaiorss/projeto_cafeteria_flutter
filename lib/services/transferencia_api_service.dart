@@ -7,10 +7,17 @@ import '../config/api_config.dart';
 import '../models/transferencia.dart';
 
 class TransferenciaApiException implements Exception {
-  TransferenciaApiException(this.mensagem, {this.statusCode});
+  TransferenciaApiException(
+    this.mensagem, {
+    this.statusCode,
+    this.falhaDeConexao = false,
+    this.tempoEsgotado = false,
+  });
 
   final String mensagem;
   final int? statusCode;
+  final bool falhaDeConexao;
+  final bool tempoEsgotado;
 
   @override
   String toString() {
@@ -22,20 +29,24 @@ class TransferenciaApiException implements Exception {
 }
 
 class TransferenciaApiService {
-  TransferenciaApiService({http.Client? cliente, String? baseUrl})
-    : _cliente = cliente ?? http.Client(),
-      _baseUrl = _normalizarBaseUrl(baseUrl ?? ApiConfig.baseUrl);
+  TransferenciaApiService({
+    http.Client? cliente,
+    String? baseUrl,
+    Duration tempoLimite = _tempoLimitePadrao,
+  }) : _cliente = cliente ?? http.Client(),
+       _baseUrl = _normalizarBaseUrl(baseUrl ?? ApiConfig.baseUrl),
+       _tempoLimite = tempoLimite;
 
   final http.Client _cliente;
   final String _baseUrl;
+  final Duration _tempoLimite;
 
-  static const Duration _tempoLimite = Duration(seconds: 15);
+  static const Duration _tempoLimitePadrao = Duration(seconds: 90);
 
   Future<int> enviar(Transferencia transferencia) async {
-    final Uri uri = Uri.parse('$_baseUrl/api/transferencias');
-
     final http.Response resposta;
     try {
+      final Uri uri = Uri.parse('$_baseUrl/api/transferencias');
       resposta = await _cliente
           .post(
             uri,
@@ -45,11 +56,18 @@ class TransferenciaApiService {
             body: jsonEncode(transferencia.toJson()),
           )
           .timeout(_tempoLimite);
+    } on FormatException catch (erro) {
+      throw TransferenciaApiException('URL da API inválida: ${erro.message}');
     } on TimeoutException {
-      throw TransferenciaApiException('Tempo esgotado ao conectar com a API.');
+      throw TransferenciaApiException(
+        'Tempo esgotado ao conectar com a API.',
+        falhaDeConexao: true,
+        tempoEsgotado: true,
+      );
     } on http.ClientException catch (erro) {
       throw TransferenciaApiException(
         'Não foi possível conectar com a API: ${erro.message}',
+        falhaDeConexao: true,
       );
     }
 
@@ -80,16 +98,22 @@ class TransferenciaApiService {
   }
 
   Future<List<Transferencia>> listar() async {
-    final Uri uri = Uri.parse('$_baseUrl/api/transferencias');
-
     final http.Response resposta;
     try {
+      final Uri uri = Uri.parse('$_baseUrl/api/transferencias');
       resposta = await _cliente.get(uri).timeout(_tempoLimite);
+    } on FormatException catch (erro) {
+      throw TransferenciaApiException('URL da API inválida: ${erro.message}');
     } on TimeoutException {
-      throw TransferenciaApiException('Tempo esgotado ao conectar com a API.');
+      throw TransferenciaApiException(
+        'Tempo esgotado ao conectar com a API.',
+        falhaDeConexao: true,
+        tempoEsgotado: true,
+      );
     } on http.ClientException catch (erro) {
       throw TransferenciaApiException(
         'Não foi possível conectar com a API: ${erro.message}',
+        falhaDeConexao: true,
       );
     }
 
@@ -116,7 +140,14 @@ class TransferenciaApiService {
           statusCode: resposta.statusCode,
         );
       }
-      transferencias.add(Transferencia.fromJson(item));
+      try {
+        transferencias.add(Transferencia.fromJson(item));
+      } catch (erro) {
+        throw TransferenciaApiException(
+          'Resposta inválida da API: $erro',
+          statusCode: resposta.statusCode,
+        );
+      }
     }
 
     return transferencias;
@@ -155,10 +186,5 @@ class TransferenciaApiService {
     return 'Falha ao sincronizar com a API (HTTP ${resposta.statusCode}).';
   }
 
-  static String _normalizarBaseUrl(String url) {
-    if (url.endsWith('/')) {
-      return url.substring(0, url.length - 1);
-    }
-    return url;
-  }
+  static String _normalizarBaseUrl(String url) => ApiConfig.normalizar(url);
 }

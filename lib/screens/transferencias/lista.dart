@@ -141,6 +141,11 @@ class ListaTransferenciaState extends State<ListaTransferencias> {
 
     if (resultado.totalPendentes == 0) {
       mensagem = 'Nenhum registro pendente.';
+    } else if (resultado.tempoEsgotado) {
+      mensagem =
+          'A API demorou para responder. Os registros continuam pendentes. '
+          'Sincronizados: ${resultado.sincronizados}. '
+          'Pendentes: ${resultado.restantes}.';
     } else if (resultado.interrompidoPorConexao) {
       mensagem =
           'Sem conexão com a API. Sincronizados: '

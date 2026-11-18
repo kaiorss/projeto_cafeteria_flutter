@@ -8,12 +8,14 @@ class ResultadoSincronizacao {
     required this.sincronizados,
     required this.falhas,
     required this.interrompidoPorConexao,
+    required this.tempoEsgotado,
   });
 
   final int totalPendentes;
   final int sincronizados;
   final int falhas;
   final bool interrompidoPorConexao;
+  final bool tempoEsgotado;
 
   int get restantes => totalPendentes - sincronizados;
   bool get tudoSincronizado => restantes == 0;
@@ -53,6 +55,7 @@ class TransferenciaRepository {
     int sincronizados = 0;
     int falhas = 0;
     bool interrompidoPorConexao = false;
+    bool tempoEsgotado = false;
 
     for (final Transferencia transferencia in pendentes) {
       try {
@@ -61,8 +64,9 @@ class TransferenciaRepository {
         sincronizados++;
       } on TransferenciaApiException catch (erro) {
         falhas++;
-        if (erro.statusCode == null) {
+        if (erro.falhaDeConexao) {
           interrompidoPorConexao = true;
+          tempoEsgotado = erro.tempoEsgotado;
           break;
         }
       } catch (erro) {
@@ -76,6 +80,7 @@ class TransferenciaRepository {
       sincronizados: sincronizados,
       falhas: falhas,
       interrompidoPorConexao: interrompidoPorConexao,
+      tempoEsgotado: tempoEsgotado,
     );
   }
 

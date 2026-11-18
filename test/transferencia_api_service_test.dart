@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:cafeteria/config/api_config.dart';
 import 'package:cafeteria/models/transferencia.dart';
 import 'package:cafeteria/services/transferencia_api_service.dart';
 import 'package:flutter/material.dart';
@@ -200,6 +202,58 @@ void main() {
     expect(lista.single.id, 3);
     expect(lista.single.icone, Icons.bakery_dining);
     expect(lista.single.sincronizado, isTrue);
+
+    servico.dispose();
+  });
+
+  test('normaliza a base URL sem duplicar o prefixo /api', () async {
+    expect(
+      ApiConfig.normalizar('https://cafeteria-api-h3bm.onrender.com/api/'),
+      'https://cafeteria-api-h3bm.onrender.com',
+    );
+    expect(
+      ApiConfig.normalizar(' http://localhost:3000/ '),
+      'http://localhost:3000',
+    );
+
+    late http.Request requisicao;
+    final MockClient cliente = MockClient((http.Request request) async {
+      requisicao = request;
+      return _respostaJson(<String, Object?>{'id': 42}, 201);
+    });
+    final TransferenciaApiService servico = TransferenciaApiService(
+      cliente: cliente,
+      baseUrl: 'http://localhost:3000/api/',
+    );
+
+    await servico.enviar(_criarTransferencia());
+
+    expect(
+      requisicao.url.toString(),
+      'http://localhost:3000/api/transferencias',
+    );
+    servico.dispose();
+  });
+
+  test('distingue tempo esgotado de falha de conexão', () async {
+    final MockClient cliente = MockClient((http.Request request) async {
+      throw TimeoutException('demorou');
+    });
+    final TransferenciaApiService servico = TransferenciaApiService(
+      cliente: cliente,
+      baseUrl: 'http://localhost:3000',
+      tempoLimite: const Duration(milliseconds: 1),
+    );
+
+    await expectLater(
+      servico.enviar(_criarTransferencia()),
+      throwsA(
+        isA<TransferenciaApiException>()
+            .having((erro) => erro.statusCode, 'statusCode', isNull)
+            .having((erro) => erro.falhaDeConexao, 'falhaDeConexao', isTrue)
+            .having((erro) => erro.tempoEsgotado, 'tempoEsgotado', isTrue),
+      ),
+    );
 
     servico.dispose();
   });

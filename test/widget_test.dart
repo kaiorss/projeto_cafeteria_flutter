@@ -3,6 +3,7 @@
 // Cobrem o modelo, a persistência SQLite (inclusive após reabrir o banco)
 // e o fluxo de cadastro/listagem com o status de sincronização.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -274,6 +275,32 @@ void main() {
       expect(resultado.interrompidoPorConexao, isTrue);
       expect(resultado.sincronizados, 0);
       expect(resultado.falhas, 1);
+      expect(resultado.restantes, 1);
+      expect(await repository.contarPendentes(), 1);
+
+      final List<Transferencia> salvas = await repository.listar();
+      expect(salvas.single.sincronizado, isFalse);
+      expect(salvas.single.remoteId, isNull);
+
+      api.dispose();
+    });
+
+    test('preserva o pendente e sinaliza tempo esgotado', () async {
+      final TransferenciaApiService api = _criarApiFake((
+        http.Request request,
+      ) async {
+        throw TimeoutException('demorou');
+      });
+      final TransferenciaRepository repository =
+          await _criarRepositorioEmMemoria(apiService: api);
+      await repository.cadastrar(Transferencia(nome: 'Café', valor: 5, id: 1));
+
+      final ResultadoSincronizacao resultado = await repository
+          .sincronizarPendentes();
+
+      expect(resultado.interrompidoPorConexao, isTrue);
+      expect(resultado.tempoEsgotado, isTrue);
+      expect(resultado.sincronizados, 0);
       expect(resultado.restantes, 1);
       expect(await repository.contarPendentes(), 1);
 
